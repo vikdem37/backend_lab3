@@ -1,7 +1,7 @@
 {
   "name": "backend_lab3",
   "version": "1.0.0",
-  "description": "",
+  "description": "CLI for viewing weather station data",
   "main": "index.js",
   "scripts": { "start": "node index.js" },
   "repository": {

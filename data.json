@@ -12,6 +12,8 @@
         {
             "id": 1,
             "name": "temperature_1",
+            "type": "temperature",
+            "unit": "°C",
             "interval_minutes": 60,
             "data": [
                 { "time": "00:00:00", "value": -1.2 },
@@ -43,6 +45,8 @@
         {
             "id": 2,
             "name": "wind_1",
+            "type": "wind_speed",
+            "unit": "m/s",
             "interval_minutes": 30,
             "data": [
                 { "time": "00:00:00", "value": 2.1 },
