@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { Command, CommanderError, Option } from 'commander';
+import { Command, CommanderError, InvalidArgumentError, Option } from 'commander';
 
 const DEFAULT_FILE = join(import.meta.dirname, 'data.json');
 
@@ -98,6 +98,104 @@ program
   })
   .configureOutput({ outputError: () => {} }) // англійське повідомлення не друкуємо
   .exitOverride(); // замість process.exit() commander кидає CommanderError
+
+// Повертає парсер для commander: рядок → ціле число в межах [min, max].
+function intParser(min, max = Infinity) {
+  return (value) => {
+    const number = /^\d+$/.test(value) ? Number(value) : NaN;
+    if (Number.isNaN(number) || number < min || number > max) {
+      const range = max === Infinity ? `не менше ${min}` : `від ${min} до ${max}`;
+      throw new InvalidArgumentError(`очікується ціле число ${range}, отримано «${value}»`);
+    }
+    return number;
+  };
+}
+
+function isMissing(reading) {
+  return typeof reading.value !== 'number';
+}
+
+function printTable(headers, rows) {
+  const widths = headers.map((h, i) => Math.max(h.length, ...rows.map((row) => String(row[i]).length)));
+  const line = (cells) => cells.map((cell, i) => String(cell).padEnd(widths[i])).join('  ').trimEnd();
+  console.log(line(headers));
+  rows.forEach((row) => console.log(line(row)));
+}
+
+program
+  .command('list')
+  .description('показати перелік датчиків станції')
+  .option('-n, --limit <count>', 'показати не більше вказаної кількості датчиків', intParser(1))
+  .action((options, command) => {
+    const data = getData(command);
+    const station = data.station ?? {};
+    const coords = station.location ? ` (${station.location.latitude}, ${station.location.longitude})` : '';
+    console.log(`Станція ${station.name ?? 'без назви'}${coords}, дата ${data.day ?? 'не вказана'}\n`);
+
+    const sensors = data.sensors.slice(0, options.limit);
+    const rows = sensors.map((s) => {
+      const readings = s.data ?? [];
+      return [s.id, s.name, s.interval_minutes, readings.length, readings.filter(isMissing).length];
+    });
+    printTable(['ID', 'Назва', 'Інтервал, хв', 'Показів', 'Відсутніх'], rows);
+    console.log(`\nПоказано ${sensors.length} з ${data.sensors.length}`);
+  });
+
+function findSensor(data, ref) {
+  const byId = /^\d+$/.test(ref);
+  const found = data.sensors.filter((s) => (byId ? s.id === Number(ref) : s.name === ref));
+  if (found.length === 0) {
+    const names = data.sensors.map((s) => s.name).join(', ');
+    throw new AppError(`датчик «${ref}» не знайдено. Доступні: ${names}`);
+  }
+  if (found.length > 1) {
+    throw new AppError(`кілька датчиків мають id ${ref} — вкажіть назву датчика`);
+  }
+  return found[0];
+}
+
+program
+  .command('show')
+  .description('показати всі дані одного датчика')
+  .argument('<sensor>', 'id або назва датчика')
+  .action((ref, options, command) => {
+    const sensor = findSensor(getData(command), ref);
+    console.log(JSON.stringify(sensor, null, 2));
+  });
+
+// "data[8].value" і "data.8.value" → ['data', '8', 'value']
+function parseFieldPath(fieldPath) {
+  const keys = fieldPath.replace(/\[(\d+)\]/g, '.$1').split('.');
+  if (keys.includes('')) {
+    throw new AppError(`некоректний шлях до поля: «${fieldPath}»`);
+  }
+  return keys;
+}
+
+function getField(object, keys, fieldPath) {
+  let current = object;
+  for (const key of keys) {
+    const exists = Array.isArray(current)
+      ? /^\d+$/.test(key) && Number(key) < current.length
+      : current !== null && typeof current === 'object' && Object.hasOwn(current, key);
+    if (!exists) {
+      throw new AppError(`поле «${fieldPath}» не існує (немає «${key}»)`);
+    }
+    current = current[key];
+  }
+  return current;
+}
+
+program
+  .command('get')
+  .description('показати значення окремого поля датчика, зокрема вкладеного')
+  .argument('<sensor>', 'id або назва датчика')
+  .argument('<field>', 'шлях до поля через крапку, напр. interval_minutes або data.8.value')
+  .action((ref, fieldPath, options, command) => {
+    const sensor = findSensor(getData(command), ref);
+    const value = getField(sensor, parseFieldPath(fieldPath), fieldPath);
+    console.log(typeof value === 'string' ? value : JSON.stringify(value, null, 2));
+  });
 
 try {
   program.parse();
