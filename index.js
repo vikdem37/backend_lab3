@@ -197,6 +197,85 @@ program
     console.log(typeof value === 'string' ? value : JSON.stringify(value, null, 2));
   });
 
+program
+  .command('info')
+  .description('показати характеристики датчика')
+  .argument('<sensor>', 'id або назва датчика')
+  .action((ref, options, command) => {
+    const sensor = findSensor(getData(command), ref);
+    const readings = sensor.data ?? [];
+    const missing = readings.filter(isMissing).length;
+    const rows = [
+      ['Назва', sensor.name],
+      ['Ідентифікатор', sensor.id],
+      ['Тип', sensor.type ?? 'не вказано'],
+      ['Одиниці виміру', sensor.unit ?? 'не вказано'],
+      ['Інтервал вимірювань', `${sensor.interval_minutes} хв`],
+      ['Кількість показів', `${readings.length} (наявних ${readings.length - missing}, відсутніх ${missing})`],
+      ['Період', readings.length ? `${readings[0].time} – ${readings.at(-1).time}` : 'немає показів'],
+    ];
+    rows.forEach(([label, value]) => console.log(`${`${label}:`.padEnd(22)}${value}`));
+  });
+
+program
+.command('readings')
+.description('показати серію показів датчика')
+.argument('<sensor>', 'id або назва датчика')
+.option('-s, --skip-missing', 'не показувати відсутні покази')
+.action((ref, options, command) => {
+  const sensor = findSensor(getData(command), ref);
+  const all = sensor.data ?? [];
+  const shown = options.skipMissing ? all.filter((r) => !isMissing(r)) : all;
+  const unit = sensor.unit ? ` ${sensor.unit}` : '';
+
+  console.log(`Покази датчика ${sensor.name}:`);
+  shown.forEach((r) => {
+    const value = isMissing(r) ? '   немає даних' : `${String(r.value).padStart(6)}${unit}`;
+    console.log(`  ${r.time}  ${value}`);
+  });
+  console.log(`Показано ${shown.length} з ${all.length}`);
+});
+
+// Рахує статистику лише за наявними показами; null — якщо жодного немає.
+function computeStats(readings) {
+  const present = readings.filter((r) => !isMissing(r));
+  if (present.length === 0) return null;
+
+  let min = present[0];
+  let max = present[0];
+  let sum = 0;
+  for (const r of present) {
+    if (r.value < min.value) min = r;
+    if (r.value > max.value) max = r;
+    sum += r.value;
+  }
+  return { min, max, avg: sum / present.length, used: present.length, total: readings.length };
+}
+
+program
+  .command('stats')
+  .description('показати мінімум, максимум і середнє без урахування відсутніх показів')
+  .argument('[sensor]', 'id або назва датчика; якщо не вказано — усі датчики')
+  .option('-p, --precision <digits>', 'знаків після коми для середнього', intParser(0, 10), 2)
+  .action((ref, options, command) => {
+    const data = getData(command);
+    const sensors = ref === undefined ? data.sensors : [findSensor(data, ref)];
+
+    for (const sensor of sensors) {
+      const unit = sensor.unit ? ` ${sensor.unit}` : '';
+      const stats = computeStats(sensor.data ?? []);
+      console.log(`${sensor.name}:`);
+      if (!stats) {
+        console.log('  немає жодного наявного показу, статистику обчислити неможливо');
+        continue;
+      }
+      console.log(`  мінімум:  ${stats.min.value}${unit} (о ${stats.min.time})`);
+      console.log(`  максимум: ${stats.max.value}${unit} (о ${stats.max.time})`);
+      console.log(`  середнє:  ${stats.avg.toFixed(options.precision)}${unit}`);
+      console.log(`  враховано ${stats.used} з ${stats.total} показів`);
+    }
+  });
+
 try {
   program.parse();
 } catch (err) {
