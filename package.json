@@ -1,0 +1,22 @@
+{
+  "name": "backend_lab3",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": { "start": "node index.js" },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vikdem37/backend_lab3.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/vikdem37/backend_lab3/issues"
+  },
+  "homepage": "https://github.com/vikdem37/backend_lab3#readme",
+  "dependencies": {
+    "commander": "^15.0.0"
+  },
+  "type": "module"
+}
